@@ -1,0 +1,56 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: clinical-insights-ai:local
+    container_name: clinical-insights-ai-api
+    environment:
+      APP_NAME: Clinical Insights AI
+      APP_VERSION: 0.1.0
+      LOG_LEVEL: INFO
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env or the shell environment}
+      CHROMA_PERSIST_DIRECTORY: ./data/chroma_db
+      CHROMA_COLLECTION_NAME: clinical_documents
+      UPLOAD_DIRECTORY: ./data/uploads
+      SAMPLE_DOCS_DIRECTORY: ./data/sample_docs
+      ENABLE_GUARDRAILS: "true"
+      MOCK_LLM: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - clinical_data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: clinical-insights-ai-db
+    environment:
+      POSTGRES_DB: clinical_insights
+      POSTGRES_USER: clinical
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env or the shell environment}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinical -d clinical_insights"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  clinical_data:
+  postgres_data:

@@ -1,0 +1,28 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      - id: smoke-test
+        name: App startup smoke test
+        language: system
+        entry: bash scripts/smoke_test.sh
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^(backend|config)/
+
+      - id: unit-tests
+        name: Unit tests (fast, offline)
+        language: system
+        entry: >
+          pytest tests/domains tests/api tests/canary
+          --cov=backend --cov-config=.coveragerc
+          --cov-fail-under=70
+          -q --tb=short
+        pass_filenames: false
+        stages: [pre-commit]
+        files: ^(backend|tests)/

@@ -1,0 +1,36 @@
+name: Request Copilot PR Review
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  request-copilot-review:
+    name: Request Copilot reviewer
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Request Copilot review
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              await github.rest.pulls.requestReviewers({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                reviewers: ['copilot'],
+              });
+              core.info('Copilot reviewer requested successfully.');
+            } catch (error) {
+              core.warning(`Could not request Copilot reviewer: ${error.message}`);
+            }

@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clinical-insights-ai
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clinical-insights-ai
+  template:
+    metadata:
+      labels:
+        app: clinical-insights-ai
+    spec:
+      containers:
+        - name: api
+          image: clinical-insights-ai:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: SYNC_MODE
+              value: PG_ONLY
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 6

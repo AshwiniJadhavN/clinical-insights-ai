@@ -1,0 +1,4 @@
+log_level: INFO
+json_logs: true
+request_id_header: X-Request-ID
+redact_phi: true

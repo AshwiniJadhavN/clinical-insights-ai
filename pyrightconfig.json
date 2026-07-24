@@ -1,0 +1,29 @@
+{
+  "include": ["backend"],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    ".venv311",
+    "backend/cli",
+    "backend/models",
+    "backend/rag/embedder.py",
+    "backend/rag/retriever.py",
+    "backend/rag/generator.py",
+    "backend/rag/pgvector_retriever.py"
+  ],
+  "pythonVersion": "3.11",
+  "venvPath": ".",
+  "venv": ".venv311",
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownLambdaType": false,
+  "reportUnknownParameterType": false,
+  "reportPrivateUsage": false,
+  "reportUnnecessaryIsInstance": true,
+  "reportUnnecessaryComparison": true,
+  "reportUnusedImport": true,
+  "reportUnusedVariable": true
+}

@@ -1,0 +1,57 @@
+rules:
+  - id: block_sensitive_files
+    description: Block draft automation against sensitive local or secret-bearing files.
+    mode: blocking
+    field: source_name
+    operator: glob_any
+    patterns:
+      - "*.pem"
+      - "*.key"
+      - ".env"
+      - "*/.env"
+      - "*.env"
+    message: "Sensitive file paths are blocked from advisory automation."
+
+  - id: warn_large_files
+    description: Warn when payload source text is large enough to require manual review.
+    mode: non_blocking
+    field: source_text
+    operator: max_length
+    max_length: 5000
+    message: "source_text exceeds 5000 characters; review output carefully."
+
+  - id: require_traceability
+    description: Require source name and an audit_id reference before draft automation runs.
+    mode: blocking
+    operator: traceability_required
+    source_name_field: source_name
+    audit_reference_field: source_text
+    audit_reference: "audit_id"
+    message: "Traceability is required: source_name and an audit_id reference must be present."
+
+  - rule_id: THRESH_001
+    id: dynamic_high_risk_similarity_threshold
+    description: "Dynamic threshold based on high-risk clinical chunk metadata."
+    operator: similarity_threshold
+    condition: "metadata.risk_level == 'HIGH'"
+    threshold: 0.92
+    action: "block"
+    message: "High-risk clinical evidence requires cosine similarity >= 0.92."
+
+  - rule_id: THRESH_002
+    id: dynamic_medium_risk_similarity_threshold
+    description: "Dynamic threshold based on medium-risk clinical chunk metadata."
+    operator: similarity_threshold
+    condition: "metadata.risk_level == 'MEDIUM'"
+    threshold: 0.80
+    action: "warn"
+    message: "Medium-risk clinical evidence below 0.80 should be reviewed carefully."
+
+  - rule_id: THRESH_003
+    id: dynamic_low_risk_similarity_threshold
+    description: "Dynamic threshold based on low-risk clinical chunk metadata."
+    operator: similarity_threshold
+    condition: "metadata.risk_level == 'LOW'"
+    threshold: 0.65
+    action: "log"
+    message: "Low-risk clinical evidence threshold is 0.65."

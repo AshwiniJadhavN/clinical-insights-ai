@@ -1,0 +1,9 @@
+chunk_size: 512
+chunk_overlap: 64
+retrieval_top_k: 5
+confidence_threshold: 0.7
+sync_mode: DUAL_WRITE
+vector_backend: chroma
+sample_docs_directory: ./data/sample_docs
+chroma_persist_directory: ./data/chroma_db
+chroma_collection_name: clinical_documents

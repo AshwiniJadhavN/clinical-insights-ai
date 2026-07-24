@@ -1,0 +1,933 @@
+name: CI Checks
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'config/**'
+      - 'frontend/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'requirements*.txt'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'pyproject.toml'
+      - '.github/workflows/ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'config/**'
+      - 'frontend/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'requirements*.txt'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'pyproject.toml'
+      - '.github/workflows/ci.yml'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  code-review-check:
+    name: Code Review Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install code review tools
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install ruff==0.5.0
+
+      - name: Review code style and import safety
+        run: ruff check .
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Code Review Gate"
+            echo ""
+            echo "- Gate: Ruff code review"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/code-review-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-check-report
+          path: ci-reports/code-review-check.md
+
+  test-check:
+    name: Test Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install -r requirements.txt
+
+      - name: Run automated tests
+        id: pytest
+        shell: bash
+        run: |
+          mkdir -p artifacts/testing-ai
+          set +e
+          pytest 2>&1 | tee artifacts/testing-ai/pytest-output.txt
+          status=${PIPESTATUS[0]}
+          echo "pytest_exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Capture GitHub Actions execution context
+        if: always()
+        run: |
+          mkdir -p artifacts/testing-ai
+          {
+            echo "workflow=${{ github.workflow }}"
+            echo "job=${{ github.job }}"
+            echo "run_id=${{ github.run_id }}"
+            echo "ref=${{ github.ref }}"
+            echo "sha=${{ github.sha }}"
+          } > artifacts/testing-ai/github-actions-context.log
+
+      - name: Generate advisory integration testing report
+        if: always()
+        continue-on-error: true
+        run: python scripts/testing_ai_ci.py generate-report --project-root .
+
+      - name: Run advisory failure analyzer
+        if: always() && steps.pytest.outputs.pytest_exit_code != '0'
+        continue-on-error: true
+        run: |
+          python scripts/testing_ai_ci.py analyze-failure \
+            --project-root . \
+            --pytest-output artifacts/testing-ai/pytest-output.txt \
+            --github-actions-log artifacts/testing-ai/github-actions-context.log
+
+      - name: Upload testing AI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testing-ai-artifacts
+          path: |
+            artifacts/testing-ai/
+            docs/testing/
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Test Gate"
+            echo ""
+            echo "- Gate: pytest"
+            echo "- Pytest exit code: ${{ steps.pytest.outputs.pytest_exit_code }}"
+            echo "- Advisory report: docs/testing/ai_assisted_integration_report.md"
+            echo "- Integration graph: docs/testing/integration_test_graph.mmd"
+            echo "- Advisory failure analysis: non-blocking"
+          } > ci-reports/test-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-check-report
+          path: ci-reports/test-check.md
+
+      - name: Enforce pytest result
+        if: always()
+        run: test "${{ steps.pytest.outputs.pytest_exit_code }}" -eq 0
+
+  type-check:
+    name: Type Check Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install type checker
+        run: |
+          python -m venv .venv311
+          .venv311/bin/python -m pip install --upgrade pip==24.0
+          .venv311/bin/pip install -r requirements.txt
+          .venv311/bin/pip install pyright==1.1.390
+
+      - name: Run Pyright
+        run: .venv311/bin/pyright
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Type Check Gate"
+            echo ""
+            echo "- Gate: Pyright static type analysis"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/type-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: type-check-report
+          path: ci-reports/type-check.md
+
+  coverage-check:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install -r requirements.txt
+
+      - name: Run coverage gate
+        run: |
+          pytest --cov=backend --cov-config=.coveragerc --cov-report=term-missing --cov-report=xml --cov-fail-under=70
+          python scripts/critical_coverage_check.py coverage.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Coverage Gate"
+            echo ""
+            echo "- Gate: risk-based pytest coverage"
+            echo "- Overall threshold: 70%"
+            echo "- Critical safety paths: 100%"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/coverage-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-check-report
+          path: ci-reports/coverage-check.md
+
+  architecture-check:
+    name: Architecture Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate architectural guardrails
+        run: |
+          test -f Dockerfile
+          test -f docker-compose.yml
+          test -f config/model_config.yaml
+          test -f config/retrieval_config.yaml
+          test -f config/prompt_templates.yaml
+          test -f config/logging_config.yaml
+          test -f README.md
+          test -f FAILURE_MODES.md
+          test -f docs/architecture.md
+          test -f docs/testing/README.md
+          test -f docs/engineering_readiness.md
+          test -f docs/prr/confidence_signal.md
+          test -f docs/prr/traceability_review.md
+          test -f docs/prr/embedding_versioning.md
+          test -f docs/prr/healthcare_governance.md
+          test -f docs/adr/0001-layered-domain-architecture.md
+          test -f docs/adr/0002-configuration-as-code.md
+          test -f docs/adr/0003-dual-vector-store-sync.md
+          test -f docs/adr/0004-risk-based-refusal-thresholds.md
+          test -f docs/adr/0005-tamper-evident-audit-log.md
+          test -f backend/core/bootstrap.py
+          grep -R "response_model=" backend/api backend/main.py
+          grep -R "SAFETY_DISCLAIMER" backend/schemas
+          grep -R "evidence_status" backend tests docs README.md
+          grep -R "SafetyDecisionEngine" backend tests docs
+          grep -R "human_review_decision" backend tests docs
+          grep -R "/testing-ai" backend tests README.md docs
+          grep -R "HEALTHCHECK" Dockerfile
+          grep -R "healthcheck:" docker-compose.yml
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Architecture Gate"
+            echo ""
+            echo "- Gate: architecture, safety, and deployment structure"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/architecture-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-check-report
+          path: ci-reports/architecture-check.md
+
+  secret-scan-check:
+    name: Secret Scan Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan repository for leaked secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Secret Scan Gate"
+            echo ""
+            echo "- Gate: Gitleaks repository secret scan"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/secret-scan-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: secret-scan-check-report
+          path: ci-reports/secret-scan-check.md
+
+  dependency-security-check:
+    name: Dependency Security Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependency scanner
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install pip-audit==2.7.3
+
+      - name: Scan Python dependencies
+        run: |
+          pip-audit -r requirements.txt \
+            --ignore-vuln GHSA-f4j7-r4q5-qw2c \
+            --progress-spinner off \
+            --format json \
+            --output pip-audit-report.json
+
+      - name: Upload dependency audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: pip-audit-report.json
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Dependency Security Gate"
+            echo ""
+            echo "- Gate: pip-audit dependency report"
+            echo "- Status: ${{ job.status }}"
+            echo "- Advisory exception: GHSA-f4j7-r4q5-qw2c (chromadb has no patched release; this repo uses the embedded client, not the vulnerable server endpoint)"
+          } > ci-reports/dependency-security-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-security-check-report
+          path: ci-reports/dependency-security-check.md
+
+  api-contract-check:
+    name: API Contract Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install -r requirements.txt
+
+      - name: Validate health, metrics, and OpenAPI contracts
+        run: pytest tests/api/test_api_contract.py tests/api/test_health_api.py
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## API Contract Gate"
+            echo ""
+            echo "- Gate: health, metrics, request ID, and OpenAPI contracts"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/api-contract-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-contract-check-report
+          path: ci-reports/api-contract-check.md
+
+  governance-check:
+    name: Governance Check Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install governance dependency
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install PyYAML==6.0.3
+
+      - name: Run governance CLI smoke test
+        run: python scripts/gov_check.py .github/governance_sample_payload.json
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Governance Check Gate"
+            echo ""
+            echo "- Gate: YAML governance rule engine"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/governance-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-check-report
+          path: ci-reports/governance-check.md
+
+  canary-attack-check:
+    name: Canary Attack Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install -r requirements.txt
+
+      - name: Run adversarial refusal canaries
+        run: pytest tests/canary
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Canary Attack Gate"
+            echo ""
+            echo "- Gate: adversarial prompts must be refused before execution"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/canary-attack-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-attack-check-report
+          path: ci-reports/canary-attack-check.md
+
+  retrieval-eval-check:
+    name: Retrieval Eval Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install -r requirements.txt
+
+      - name: Run golden retrieval evaluation
+        run: python scripts/run_retrieval_eval.py
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Retrieval Eval Gate"
+            echo ""
+            echo "- Gate: golden retrieval quality evaluation"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/retrieval-eval-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-eval-check-report
+          path: ci-reports/retrieval-eval-check.md
+
+  refusal-eval-check:
+    name: Refusal Eval Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install -r requirements.txt
+
+      - name: Run refusal and adversarial evaluation
+        run: python evals/refusal_eval.py
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Refusal Eval Gate"
+            echo ""
+            echo "- Gate: refusal and adversarial behavior evaluation"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/refusal-eval-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refusal-eval-check-report
+          path: ci-reports/refusal-eval-check.md
+
+  audit-integrity-check:
+    name: Audit Integrity Gate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify sample audit hash chain
+        run: python -m backend.cli.verify_audit_chain data/audit_chain_sample.jsonl
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Audit Integrity Gate"
+            echo ""
+            echo "- Gate: tamper-evident JSONL audit hash chain"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/audit-integrity-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-integrity-check-report
+          path: ci-reports/audit-integrity-check.md
+
+  compose-integration-check:
+    name: Compose Integration Gate
+    runs-on: ubuntu-latest
+
+    env:
+      # CI-only placeholder credentials for the ephemeral Docker Compose database.
+      # Not production secrets; the database is torn down after this job completes.
+      DATABASE_URL: postgresql://clinical:ci_password@db:5432/clinical_insights
+      POSTGRES_PASSWORD: ci_password
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose syntax
+        run: docker compose config
+
+      - name: Start database service
+        run: docker compose up -d db
+
+      - name: Wait for database health
+        run: |
+          for attempt in {1..30}; do
+            status="$(docker inspect --format='{{.State.Health.Status}}' clinical-insights-ai-db)"
+            if [ "$status" = "healthy" ]; then
+              echo "PostgreSQL service is healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs db
+          exit 1
+
+      - name: Stop Compose services
+        if: always()
+        run: docker compose down --volumes
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Compose Integration Gate"
+            echo ""
+            echo "- Gate: Docker Compose syntax and PostgreSQL health"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/compose-integration-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-integration-check-report
+          path: ci-reports/compose-integration-check.md
+
+  build-check:
+    name: Build Gate
+    runs-on: ubuntu-latest
+    needs:
+      - code-review-check
+      - test-check
+      - type-check
+      - coverage-check
+      - architecture-check
+      - secret-scan-check
+      - dependency-security-check
+      - api-contract-check
+      - governance-check
+      - canary-attack-check
+      - retrieval-eval-check
+      - audit-integrity-check
+      - compose-integration-check
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t clinical-insights-ai:${{ github.sha }} .
+
+      - name: Save Docker image artifact
+        run: docker save clinical-insights-ai:${{ github.sha }} -o clinical-insights-ai.tar
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clinical-insights-ai-image
+          path: clinical-insights-ai.tar
+          retention-days: 1
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Build Gate"
+            echo ""
+            echo "- Gate: Docker image build"
+            echo "- Image: clinical-insights-ai:${{ github.sha }}"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/build-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-check-report
+          path: ci-reports/build-check.md
+
+  smoke-test-check:
+    name: Smoke Test Gate
+    runs-on: ubuntu-latest
+    needs: build-check
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --upgrade pip==24.0
+          pip install -r requirements.txt
+
+      - name: Run smoke test
+        run: bash scripts/smoke_test.sh
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Smoke Test Gate"
+            echo ""
+            echo "- Gate: FastAPI health and startup smoke test"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/smoke-test-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-check-report
+          path: ci-reports/smoke-test-check.md
+
+  security-check:
+    name: Security Gate
+    runs-on: ubuntu-latest
+    needs: smoke-test-check
+
+    steps:
+      - name: Download Docker image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: clinical-insights-ai-image
+
+      - name: Load Docker image
+        run: docker load -i clinical-insights-ai.tar
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: clinical-insights-ai:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Security Gate"
+            echo ""
+            echo "- Gate: Trivy image scan"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/security-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-check-report
+          path: ci-reports/security-check.md
+
+  deployment-readiness-check:
+    name: Compose and Script Check
+    runs-on: ubuntu-latest
+    needs:
+      - build-check
+      - smoke-test-check
+      - security-check
+
+    env:
+      # CI-only placeholder credentials required for docker compose config
+      # variable interpolation. No real database is started in this job.
+      DATABASE_URL: postgresql://clinical:ci_password@db:5432/clinical_insights
+      POSTGRES_PASSWORD: ci_password
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose configuration
+        run: docker compose config
+
+      - name: Verify deployment scripts are executable
+        run: |
+          test -x scripts/run_local.sh
+          test -x scripts/test.sh
+          test -x scripts/build_image.sh
+          test -x scripts/deploy_local.sh
+
+      - name: Write gate report
+        if: always()
+        run: |
+          mkdir -p ci-reports
+          {
+            echo "## Compose and Script Check"
+            echo ""
+            echo "- Gate: Docker Compose and deployment scripts"
+            echo "- Status: ${{ job.status }}"
+          } > ci-reports/deployment-readiness-check.md
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-readiness-check-report
+          path: ci-reports/deployment-readiness-check.md
+
+  release-review-check:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs:
+      - code-review-check
+      - test-check
+      - type-check
+      - coverage-check
+      - architecture-check
+      - secret-scan-check
+      - dependency-security-check
+      - api-contract-check
+      - governance-check
+      - canary-attack-check
+      - retrieval-eval-check
+      - refusal-eval-check
+      - audit-integrity-check
+      - compose-integration-check
+      - build-check
+      - smoke-test-check
+      - security-check
+      - deployment-readiness-check
+    if: always()
+
+    steps:
+      - name: Download gate reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-check-report"
+          path: downloaded-check-reports
+          merge-multiple: true
+
+      - name: Assemble release review report
+        run: |
+          {
+            echo "# CI Summary"
+            echo ""
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Event: ${{ github.event_name }}"
+            echo ""
+            cat downloaded-check-reports/*.md
+          } > ci-release-summary.md
+
+      - name: Upload CI summary report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-release-summary
+          path: ci-release-summary.md

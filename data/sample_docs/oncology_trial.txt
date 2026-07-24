@@ -1,0 +1,1 @@
+Oncology trial sample. The study objective is to evaluate progression-free survival in adults with metastatic disease. The primary endpoint is progression-free survival at 12 months.

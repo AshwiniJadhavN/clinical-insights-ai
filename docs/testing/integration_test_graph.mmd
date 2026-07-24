@@ -1,0 +1,19 @@
+flowchart TD
+    subgraph Traceability[Traceability Graph]
+        Requirement[Requirement] --> Risk[Risk]
+        Risk --> IntegrationTest[Integration Test]
+        IntegrationTest --> CIPipeline[CI Pipeline]
+        CIPipeline --> Result[Result]
+        Result --> AuditEvidence[Audit Evidence]
+    end
+    subgraph RuntimePath[Runtime Integration Path]
+        API[API] -->|Evidence Retrieval 100%| Retriever[Retriever]
+        Retriever --> PromptBuilder[Prompt Builder]
+        PromptBuilder -->|Prompt Injection 100%| LLM[LLM]
+        LLM -->|Safety Rules 100%| Governance[Governance]
+        Governance -->|Audit Logging 100%| Audit[Audit]
+        Audit --> Response[Response]
+    end
+    FailureRecovery[Failure Recovery 100%] --> CIPipeline
+    Configuration[Configuration 100%] --> API
+    Gaps[High-Risk Gaps: Malformed uploaded document] --> IntegrationTest

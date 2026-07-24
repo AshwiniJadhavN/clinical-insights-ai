@@ -1,0 +1,1 @@
+Diabetes trial sample. Adults with type 2 diabetes were monitored for change in HbA1c at 24 weeks. Risk factors tracked included hypoglycemia and injection-site reactions.

@@ -1,0 +1,7 @@
+{
+  "automation_type": "pr_review",
+  "agent_name": "Governance Check Gate",
+  "source_name": "backend/main.py",
+  "source_text": "audit_id: ci-governance-smoke-test\n+ app.include_router(governance.router, prefix=\"/governance\")",
+  "model_used": "deterministic-devops-agent-v1"
+}

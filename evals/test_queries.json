@@ -1,0 +1,54 @@
+{
+  "description": "Representative retrieval questions for the sample document corpus.",
+  "top_k": 3,
+  "cases": [
+    {
+      "id": "cardiology-potassium",
+      "question": "What potassium level was reported in the cardiology note?",
+      "expected_doc_ids": ["cardiology_note"],
+      "expected_sources": ["cardiology_note.txt"]
+    },
+    {
+      "id": "cardiology-review",
+      "question": "Which note recommended clinician review before any treatment decision?",
+      "expected_doc_ids": ["cardiology_note"],
+      "expected_sources": ["cardiology_note.txt"]
+    },
+    {
+      "id": "diabetes-hba1c",
+      "question": "Which outcome was measured at 24 weeks in adults with type 2 diabetes?",
+      "expected_doc_ids": ["diabetes_trial"],
+      "expected_sources": ["diabetes_trial.txt"]
+    },
+    {
+      "id": "diabetes-risk-factors",
+      "question": "What risk factors were tracked in the diabetes trial?",
+      "expected_doc_ids": ["diabetes_trial"],
+      "expected_sources": ["diabetes_trial.txt"]
+    },
+    {
+      "id": "diabetes-adverse-events",
+      "question": "Which trial tracked hypoglycemia and injection-site reactions?",
+      "expected_doc_ids": ["diabetes_trial"],
+      "expected_sources": ["diabetes_trial.txt"]
+    },
+    {
+      "id": "oncology-endpoint",
+      "question": "What was the primary endpoint at 12 months in the oncology study?",
+      "expected_doc_ids": ["oncology_trial"],
+      "expected_sources": ["oncology_trial.txt"]
+    },
+    {
+      "id": "oncology-metastatic",
+      "question": "Which study involved adults with metastatic disease?",
+      "expected_doc_ids": ["oncology_trial"],
+      "expected_sources": ["oncology_trial.txt"]
+    },
+    {
+      "id": "oncology-survival",
+      "question": "Which study discussed progression-free survival?",
+      "expected_doc_ids": ["oncology_trial"],
+      "expected_sources": ["oncology_trial.txt"]
+    }
+  ]
+}

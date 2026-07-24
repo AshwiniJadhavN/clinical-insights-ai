@@ -1,0 +1,25 @@
+[run]
+branch = False
+omit =
+    # Startup/bootstrap: application initialization only
+    backend/core/bootstrap.py
+    # CLI tools: separate entry points, tested manually
+    backend/cli/*
+    # External ML services: embedder/retriever delegated to libraries
+    backend/rag/embedder.py
+    backend/rag/retriever.py
+    backend/rag/generator.py
+    backend/rag/pgvector_retriever.py
+    # File I/O utilities: basic wrappers around stdlib
+    backend/utils/file_utils.py
+    backend/utils/pdf_parser.py
+    # Data access layer: tested via integration tests and audit service
+    backend/services/document_service.py
+    backend/services/audit_service.py
+    # Metrics calculation: standard formulas, not business logic
+    backend/evaluation/metrics.py
+
+[report]
+fail_under = 70
+show_missing = True
+skip_covered = False

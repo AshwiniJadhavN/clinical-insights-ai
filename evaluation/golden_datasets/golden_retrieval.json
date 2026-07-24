@@ -1,0 +1,20 @@
+{
+  "min_accuracy": 1.0,
+  "cases": [
+    {
+      "question": "Which document discusses HbA1c monitoring in diabetes?",
+      "expected_source": "diabetes_trial.txt",
+      "required_terms": ["HbA1c", "diabetes"]
+    },
+    {
+      "question": "Where is progression-free survival evaluated?",
+      "expected_source": "oncology_trial.txt",
+      "required_terms": ["progression-free survival", "oncology"]
+    },
+    {
+      "question": "Which note mentions potassium at 3.2 mEq/L?",
+      "expected_source": "cardiology_note.txt",
+      "required_terms": ["potassium", "3.2"]
+    }
+  ]
+}
