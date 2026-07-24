@@ -14,8 +14,8 @@ Restore a previous known-good application image quickly when a release introduce
 ## Useful commands
 
 ```bash
-docker pull ghcr.io/<owner>/clinical-insights-ai:<tag>
-docker run --rm -p 8000:8000 ghcr.io/<owner>/clinical-insights-ai:<tag>
+docker pull ghcr.io/<owner>/clinical-insights-ai-service:<tag>
+docker run --rm -p 8000:8000 ghcr.io/<owner>/clinical-insights-ai-service:<tag>
 ```
 
 ## Operational note

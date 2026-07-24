@@ -57,7 +57,7 @@ jobs:
         id: meta
         run: |
           OWNER_LOWER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
-          IMAGE=ghcr.io/${OWNER_LOWER}/clinical-insights-ai
+          IMAGE=ghcr.io/${OWNER_LOWER}/clinical-insights-ai-service
           if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
             echo "tags=${IMAGE}:${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
