@@ -5,16 +5,16 @@
 # Python 3.11+ required
 
 # --- Web Framework ---
-fastapi==0.140.7
-uvicorn[standard]==0.51.0
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
 python-multipart==0.0.32       # Required for FastAPI file uploads
 
 # --- HTTP Client ---
 requests==2.34.2              # HTTP client for service integration
 
 # --- AI / LLM APIs ---
-openai==2.49.0
-anthropic==0.120.0
+openai==2.53.0
+anthropic==0.120.2
 
 # --- Embeddings (runs locally, no API cost) ---
 sentence-transformers==5.6.1
