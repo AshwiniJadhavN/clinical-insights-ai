@@ -1,175 +1,88 @@
 # Clinical Insights AI
 
-> Engineering reference implementation for a clinical-document RAG system with evidence-grounded answers, refusal behavior, audit metadata, and review-oriented quality checks.
+Clinical document Q&A with source citations, evidence checks, and explicit refusal behaviour.
 
-> Scope, non-claims, and data-handling limits are defined in [DISCLAIMER.md](DISCLAIMER.md).
+A reference implementation showing how retrieval, generation, safety decisions, and audit metadata fit into an inspectable software workflow.
 
-## What I'd Do Next In Production
+**Synthetic data only. Not intended for clinical use. Do not upload real patient data.** See [DISCLAIMER.md](DISCLAIMER.md).
 
-1. Replace demo/local retrieval with production PGVector-only serving and regional failover.
-2. Add centralized immutable audit storage plus retention/forensics controls.
-3. Introduce SLO-backed alerting and on-call playbooks tied to safety and refusal metrics.
-4. Run formal PHI data-flow review and security hardening before any real clinical data.
-5. Execute clinician-led validation on representative use cases before broader rollout.
+## The Problem
 
-## Why This Repository Exists
+Clinical and operational documents can be long and difficult to search. A document assistant should help users inspect the evidence behind an answer and recognise when the available information is insufficient.
 
-Clinical and operational documents are often long and difficult to search. This project demonstrates a safer document Q&A flow:
+This project explores that workflow: retrieve relevant passages, check the evidence, and generate an answer with citations or return an explicit refusal or clarification response.
 
-1. retrieve evidence first,
-2. decide whether evidence quality is sufficient,
-3. answer with citations or refuse/clarify,
-4. persist reviewable audit metadata.
+## See It in Action
 
-The repository is designed for technical-review walkthroughs of engineering quality in an AI system.
+- Watch the demo: [docs/demo/demo.mp4](docs/demo/demo.mp4)
+- Five-minute reviewer guide: [docs/reviewer_guide.md](docs/reviewer_guide.md)
 
-## Quick Review Links
+## What It Does
 
-- Reviewer guide (5-minute path): [docs/reviewer_guide.md](docs/reviewer_guide.md)
-- Evaluation docs: [docs/evaluation.md](docs/evaluation.md)
-- CI workflow: [.github/workflows/ci.yml](.github/workflows/ci.yml)
-- Container workflow: [.github/workflows/cd.yml](.github/workflows/cd.yml)
-- Architecture overview: [docs/architecture.md](docs/architecture.md)
-- Architecture deep dive index: [docs/architecture/README.md](docs/architecture/README.md)
-- Engineering tradeoffs: [docs/engineering_tradeoffs.md](docs/engineering_tradeoffs.md)
-- Refusal logic: [backend/refusal/logic.py](backend/refusal/logic.py)
-- Safety decision orchestration: [backend/safety/decision_engine.py](backend/safety/decision_engine.py)
-- Query orchestration: [backend/services/query_service.py](backend/services/query_service.py)
-- Audit logging service: [backend/services/audit_service.py](backend/services/audit_service.py)
-- JSONL audit writer: [backend/audit/jsonl_writer.py](backend/audit/jsonl_writer.py)
-- Benchmark script: [scripts/benchmark_api.py](scripts/benchmark_api.py)
-- Load-test script: [tests/load/k6_smoke.js](tests/load/k6_smoke.js)
+- **Ingests documents**: accepts PDF and text files, chunks their content, and indexes it for retrieval.
+- **Checks evidence before generation**: applies retrieval thresholds and safety policies.
+- **Makes sources inspectable**: returns document references, excerpts, and citation metadata.
+- **Handles unsupported requests**: includes responses for insufficient evidence, conflicts, policy violations, and generation timeouts.
+- **Supports review**: records query metadata and connects structured safety findings to requirements, hazards, and controls.
 
-## Demo
+Built with FastAPI, with separate services for document handling, query orchestration, safety decisions, and auditing. Local development supports SQLite; Docker Compose provides a PostgreSQL-backed path. Both supplied startup paths default to mock language-model mode.
 
-- Video: [docs/demo/demo.mp4](docs/demo/demo.mp4)
-- Preview image: [docs/demo/demo-preview.png](docs/demo/demo-preview.png)
-- Screenshot walk-through: [docs/demo/README.md](docs/demo/README.md)
+## Why This Design
 
-## Measurable Outcomes (Current Deterministic Baseline)
+The central design choice is to make evidence checks and response decisions explicit.
 
-Last run: 2026-07-10 (local deterministic harnesses)
+1. **Prepare the evidence**: ingest documents, split them into chunks, and index them. → [Document service](backend/services/document_service.py)
+2. **Retrieve relevant passages**: embed the question and search indexed content. → [Query service](backend/services/query_service.py)
+3. **Check the evidence**: apply retrieval thresholds and safety rules before generation. → [Refusal logic](backend/refusal/logic.py)
+4. **Choose a response**: proceed with generation, request clarification, or decline to answer. → [Decision engine](backend/safety/decision_engine.py)
+5. **Check generated output**: verify citation identifiers and excerpts, then apply output rules. → [Safety orchestration](backend/safety/decision_engine.py)
+6. **Record review metadata**: capture identifiers, decisions, versions, and timing. → [Audit service](backend/services/audit_service.py)
 
-| Metric area | Metric | Current result | Source |
-|---|---|---:|---|
-| Latency | Average retrieval latency | 0.032 ms | `evals/retrieval_eval.py` |
-| Eval quality | Top-1 retrieval accuracy | 100.00% (8/8) | `evals/retrieval_eval.py` |
-| Eval quality | Top-3 retrieval accuracy | 100.00% (8/8) | `evals/retrieval_eval.py` |
-| Failure rates | Missing evidence cases in retrieval eval | 0 | `evals/retrieval_eval.py` |
-| Guardrail coverage | Refusal/adversarial pass rate | 100.00% (9/9) | `evals/refusal_eval.py` |
-| Failure rates | Refusal eval failed cases | 0 | `evals/refusal_eval.py` |
+The [query service](backend/services/query_service.py) receives retrieval, generation, and safety dependencies through its constructor, keeping orchestration separate from their implementations.
 
-Notes:
-- These are engineering baseline signals from deterministic local evaluations, not clinical-performance claims.
-- CI also enforces lint, tests, type checks, and coverage gates in [.github/workflows/ci.yml](.github/workflows/ci.yml).
+Citation checks establish whether references match retrieved sources. They do not establish that every generated claim is correct.
 
-## Core Capabilities
+## My Contribution
 
-- Upload PDF/TXT clinical documents and index chunked text for retrieval.
-- Generate evidence-grounded answers with citation metadata.
-- Refuse or clarify when evidence is missing, weak, contradictory, or unsafe.
-- Record query metadata for reviewability and audit trails.
-- Run deterministic local evaluation for retrieval and refusal behavior.
+My focus is connecting the document-review workflow with concrete engineering decisions: API design, query orchestration, data validation, evidence checks, refusal behaviour, and traceability.
 
-## AI-Assisted Integration Testing
+The code, evaluations, and architecture notes show how those decisions are implemented, tested, and bounded by explicit assumptions.
 
-The repository now includes an advisory integration-testing framework that analyzes API contracts, existing tests, audit evidence, and CI failures to propose new high-risk scenarios and draft pytest templates.
+## Engineering Highlights
 
-All outputs are draft-only. The framework never auto-approves tests, never overwrites existing tests, and requires explicit human review before any generated artifact is enabled.
+| Design Choice | Purpose | Code |
+|---|---|---|
+| Injected retrieval and generation dependencies | Separate orchestration from adapters and support controlled tests | [Query service](backend/services/query_service.py) |
+| Evidence checks before generation | Stop generation when retrieval fails configured thresholds | [Refusal logic](backend/refusal/logic.py) |
+| Structured safety decisions | Make refusal, clarification, and review requirements explicit | [Decision engine](backend/safety/decision_engine.py) |
+| Citation verification | Check source identifiers and excerpts against retrieved chunks | [Citation verifier](backend/safety/citation_verifier.py) |
+| Query audit metadata | Record identifiers, decisions, versions, and timing without storing raw question or answer text in the query audit service | [Audit service](backend/services/audit_service.py) |
 
-### Feature Overview
+See also: [Engineering tradeoffs](docs/engineering_tradeoffs.md) · [Architecture decisions](docs/adr/README.md)
 
-- Analyzes FastAPI endpoint contracts and existing pytest coverage signals.
-- Maps requirements to system behavior, risk, integration test intent, expected result, and evidence to collect.
-- Produces structured JSON for failure triage and traceability.
-- Generates non-destructive pytest templates under `tests/generated/` with review banners and `pytest.mark.skip` guards.
-- Writes an advisory Markdown coverage report to `docs/testing/ai_assisted_integration_report.md`.
-- Persists a Mermaid integration graph at `docs/testing/integration_test_graph.mmd`.
-- Computes risk coverage scores for engineering dashboard-style review.
+## Evaluation Evidence
 
-### Architecture Diagram
+Recorded deterministic local baseline: 10 July 2026.
 
-```mermaid
-flowchart LR
-	A[FastAPI Contracts] --> S[TestingAIService]
-	B[Existing Integration Tests] --> S
-	C[Audit Logs] --> S
-	D[CI Failure Logs] --> S
-	S --> E[Scenario Generator]
-	S --> F[Test Generator]
-	S --> G[Risk Mapper]
-	S --> H[Failure Analyzer]
-	S --> I[Coverage Analyzer]
-	S --> J[Report Generator]
-	F --> K[tests/generated]
-	J --> L[docs/testing]
-	H --> M[artifacts/testing-ai]
+| Evaluation | Recorded Result | Evidence |
+|---|---|---|
+| Top-1 retrieval accuracy | 8/8 cases | [Retrieval harness](evals/retrieval_eval.py) |
+| Top-3 retrieval accuracy | 8/8 cases | [Retrieval harness](evals/retrieval_eval.py) |
+| Refusal and adversarial cases | 9/9 passed | [Refusal harness](evals/refusal_eval.py) |
+
+These small regression suites check predefined behaviours using synthetic data. The retrieval harness uses a deterministic token embedder; these results do not establish runtime model performance or clinical effectiveness.
+
+Reproduce locally:
+
+```bash
+make eval
 ```
 
-### Sequence Diagram
+See: [Evaluation methods and limitations](docs/evaluation.md)
 
-```mermaid
-sequenceDiagram
-	participant Engineer
-	participant CI as GitHub Actions
-	participant API as Testing AI API
-	participant Service as TestingAIService
-	participant Artifacts as Reports and Draft Tests
+## Quick Start
 
-	Engineer->>API: POST /testing-ai/generate-scenarios
-	API->>Service: analyze routes, tests, audit evidence
-	Service-->>API: draft scenarios with review disclaimer
-	Engineer->>API: POST /testing-ai/generate-tests
-	API->>Service: create advisory pytest templates
-	Service-->>Artifacts: write tests/generated/*_template.py
-	CI->>Service: generate-report after tests
-	alt pytest failure
-		CI->>Service: analyze-failure with pytest and CI logs
-		Service-->>Artifacts: write failure-analysis.json
-	end
-	Service-->>Artifacts: write docs/testing/ai_assisted_integration_report.md
-```
-
-### Integration Test Graph
-
-The generated report now embeds a deterministic traceability graph and also writes the Mermaid source to `docs/testing/integration_test_graph.mmd` so reviewers can inspect the chain from requirement to audit evidence and the runtime path from API to response.
-
-### Risk Coverage Score
-
-The report computes category-level risk coverage scores to show where integration assurance is strongest and where gaps remain. Current categories include Evidence Retrieval, Safety Rules, Audit Logging, Failure Recovery, Configuration, Document Ingestion, and Prompt Injection.
-
-### Example Workflow
-
-1. Call `POST /testing-ai/generate-scenarios` to inspect current endpoint and integration-test coverage.
-2. Review the structured gaps and select scenarios that matter for the next change.
-3. Call `POST /testing-ai/generate-tests` to create draft pytest templates under `tests/generated/`.
-4. Manually review, edit, and promote selected drafts into executable test suites.
-5. Let CI publish the updated Markdown report and, on failures, a non-blocking advisory failure analysis.
-
-### Human Review Process
-
-1. Review every generated scenario for correctness, safety relevance, and business fit.
-2. Validate every generated pytest draft before renaming or executing it.
-3. Confirm the traceability map links the intended requirement, risk, and evidence set.
-4. Treat CI failure analysis as debugging support, not as an approval or root-cause authority.
-
-### Limitations
-
-- Current analysis is deterministic and heuristic-driven rather than based on a live LLM call.
-- Coverage inference is approximate and based on route and keyword signals in current tests.
-- Generated pytest files are scaffolds, not ready-to-run production tests.
-- Failure analysis confidence is advisory and should be validated against raw logs.
-
-### Security Considerations
-
-- Generated outputs are explicitly non-authoritative and require human validation.
-- No generated file is allowed to overwrite an existing test.
-- CI analysis steps are non-blocking so advisory tooling cannot mask or replace the real pytest result.
-- The framework does not alter the RAG pipeline or existing response behavior.
-
-## Run Locally
-
-### API (local Python)
+Use Python 3.11 or later.
 
 ```bash
 python -m venv .venv
@@ -178,9 +91,9 @@ pip install -r requirements.txt
 scripts/run_local.sh
 ```
 
-Open: `http://localhost:8000/docs`
+Open `http://localhost:8000/docs`. The local script defaults to mock language-model mode for development.
 
-### Docker Compose
+**Or Docker Compose:**
 
 ```bash
 cp .env.example .env
@@ -191,59 +104,49 @@ curl http://localhost:8000/health
 ## Quality Checks
 
 ```bash
-make lint
-make test
-make eval
-make smoke-test
+make lint        # Ruff
+make test        # Enforces a 78% coverage threshold
+make eval        # Deterministic benchmarks
+make smoke-test  # Health endpoint checks
+make load-test   # k6 load test
 ```
 
-## Evaluation
+The [continuous integration workflow](.github/workflows/ci.yml) defines lint, type checks, tests, coverage, security scans, evaluation, build, and smoke-test checks.
 
-Deterministic local harnesses are documented in [docs/evaluation.md](docs/evaluation.md).
+Coverage thresholds currently differ: `make test` specifies 78%, while the continuous integration coverage job specifies 70% with [explicit coverage configuration](.coveragerc). These are configured thresholds, not reported coverage results.
 
-```bash
-make eval-retrieval
-make eval-refusal
-make eval
-```
+The smoke test checks `/health/live` and `/health`. A separate `make load-test` target runs the k6 load-test script and requires k6 installed and the application running.
 
-## Performance Evidence
+See [latest workflow runs](https://github.com/AshwiniJadhavN/clinical-insights-ai/actions) for execution results.
 
-How to generate local performance evidence:
+## What This Demonstrates
 
-1. Start the API (`scripts/run_local.sh` or `scripts/deploy_local.sh`).
-2. Run latency benchmark:
+- **System design**: API boundaries, retrieval orchestration, safety decisions, and audit metadata.
+- **Evidence-first workflow**: document ingestion, retrieval checks, explicit response decisions, and source inspection.
+- **MedTech engineering judgment**: traceability, refusal behaviour, repeatable evaluation, and clear intended-use boundaries.
+- **Delivery practices**: containerized local setup, automated quality checks, architecture documentation, and runbooks.
 
-```bash
-python3 scripts/benchmark_api.py --url http://localhost:8000/health --requests 100 --warmup 10 --save-json
-```
+## Scope and Current Limits
 
-3. Run smoke load test:
+This is an engineering reference, not a clinical product. It does not claim clinical validation, HIPAA compliance, FDA clearance, or readiness for clinical deployment.
 
-```bash
-k6 run tests/load/k6_smoke.js
-```
+Retrieval confidence and output checks are heuristic. Query audit coverage is incomplete: early input refusals bypass the audit call, and audit write failures are logged without failing the query.
 
-## CI/CD
+The separate JSONL audit writer supports hash-chain integrity checks; it does not provide immutable storage.
 
-- Main quality gates: [.github/workflows/ci.yml](.github/workflows/ci.yml)
-- Container release workflow: [.github/workflows/cd.yml](.github/workflows/cd.yml)
+See [full scope and data-handling boundaries](DISCLAIMER.md).
 
-CI checks are engineering evidence of repeatable validation and are not clinical validation.
+## Further Reading
 
-## Additional Documentation
+**For reviewers:**
 
-- Reviewer guide: [docs/reviewer_guide.md](docs/reviewer_guide.md)
-- Evaluation: [docs/evaluation.md](docs/evaluation.md)
-- Architecture docs: [docs/architecture/README.md](docs/architecture/README.md)
-- Engineering tradeoffs: [docs/engineering_tradeoffs.md](docs/engineering_tradeoffs.md)
-- ADR index: [docs/adr/README.md](docs/adr/README.md)
-- Observability notes: [docs/runbooks/observability_playbook_lite.md](docs/runbooks/observability_playbook_lite.md)
+- [Five-minute reviewer guide](docs/reviewer_guide.md)
+- [Architecture overview](docs/architecture.md)
+- [Detailed architecture views](docs/architecture/README.md)
 
-## Limitations and Non-Claims
+**For deeper dives:**
 
-- Not clinically validated and not intended for diagnosis, treatment, or triage.
-- Not HIPAA-compliant as delivered.
-- Not FDA-cleared and not a medical device.
-- Confidence scores are retrieval heuristics, not calibrated correctness probabilities.
-- Evaluation results are engineering evidence of repository controls, not clinical evidence.
+- [Engineering tradeoffs](docs/engineering_tradeoffs.md)
+- [Evaluation methods and limitations](docs/evaluation.md)
+- [Observability playbook](docs/runbooks/observability_playbook_lite.md)
+- [Architecture decision records](docs/adr/README.md)
