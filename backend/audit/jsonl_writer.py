@@ -70,13 +70,6 @@ def verify_hash_chain(path: Path) -> tuple[bool, str]:
     return True, "Audit hash chain verified."
 
 
-def _last_record_hash(path: Path) -> str:
-    if not path.exists():
-        return "GENESIS"
-    with path.open("r", encoding="utf-8") as handle:
-        return _last_record_hash_from_lines(handle)
-
-
 def _last_record_hash_from_lines(lines) -> str:
     last_hash = "GENESIS"
     for line in lines:

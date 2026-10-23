@@ -377,11 +377,15 @@ jobs:
         run: |
           pip-audit -r requirements.txt \
             --ignore-vuln GHSA-f4j7-r4q5-qw2c \
+            --ignore-vuln PYSEC-2026-3813 \
+            --ignore-vuln PYSEC-2026-3814 \
+            --ignore-vuln PYSEC-2026-3815 \
             --progress-spinner off \
             --format json \
             --output pip-audit-report.json
 
       - name: Upload dependency audit report
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: pip-audit-report
@@ -396,7 +400,8 @@ jobs:
             echo ""
             echo "- Gate: pip-audit dependency report"
             echo "- Status: ${{ job.status }}"
-            echo "- Advisory exception: GHSA-f4j7-r4q5-qw2c (chromadb has no patched release; this repo uses the embedded client, not the vulnerable server endpoint)"
+            echo "- Advisory exceptions: GHSA-f4j7-r4q5-qw2c, PYSEC-2026-3813, PYSEC-2026-3814, and PYSEC-2026-3815"
+            echo "- Rationale: ChromaDB has no patched release; this repo uses the embedded PersistentClient and does not expose the affected server authorization endpoints"
           } > ci-reports/dependency-security-check.md
 
       - name: Upload gate report

@@ -24,7 +24,7 @@ chromadb==1.5.9
 prometheus-client==0.26.0
 
 # --- PDF Parsing ---
-pypdf==6.14.2
+pypdf==6.21.1
 
 # --- Database ---
 sqlalchemy==2.0.51
