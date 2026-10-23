@@ -90,14 +90,71 @@ def test_output_validation_refuses_citation_mismatch() -> None:
             chunk_index=3,
             similarity_score=0.88,
             excerpt="Fabricated excerpt",
+            reference_id=1,
         )
     ]
 
     decision = engine.evaluate_output(
-        answer="Based on the evidence, dizziness was observed.",
+        answer="Based on the evidence [1], dizziness was observed.",
         citations=citations,
         chunks=chunks,
         confidence_level="high",
     )
 
     assert decision.action == "refuse"
+
+
+def test_output_validation_refuses_answer_without_citation_marker() -> None:
+    engine = SafetyDecisionEngine(confidence_threshold=0.7)
+    chunks = [
+        RetrievedChunk(
+            text="The study reported dizziness.",
+            doc_id="doc-1",
+            chunk_index=0,
+            original_filename="trial.txt",
+            similarity_score=0.9,
+        )
+    ]
+    citations = [
+        Citation(
+            doc_id="doc-1",
+            original_filename="trial.txt",
+            chunk_index=0,
+            similarity_score=0.9,
+            excerpt="The study reported dizziness.",
+            reference_id=1,
+        )
+    ]
+
+    decision = engine.evaluate_output(
+        answer="The study reported dizziness.",
+        citations=citations,
+        chunks=chunks,
+        confidence_level="high",
+    )
+
+    assert decision.action == "refuse"
+    assert decision.findings[0].code == "MISSING_CITATIONS"
+
+
+def test_output_validation_refuses_unknown_citation_marker() -> None:
+    engine = SafetyDecisionEngine(confidence_threshold=0.7)
+    chunks = [
+        RetrievedChunk(
+            text="The study reported dizziness.",
+            doc_id="doc-1",
+            chunk_index=0,
+            original_filename="trial.txt",
+            similarity_score=0.9,
+        )
+    ]
+
+    decision = engine.evaluate_output(
+        answer="The study reported dizziness [9].",
+        citations=[],
+        chunks=chunks,
+        confidence_level="high",
+    )
+
+    assert decision.action == "refuse"
+    assert any(finding.code == "FABRICATED_CITATION" for finding in decision.findings)

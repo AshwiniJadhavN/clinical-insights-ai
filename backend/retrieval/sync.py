@@ -51,20 +51,28 @@ class SyncedRetriever(RetrieverProtocol):
         original_filename: str,
     ) -> None:
         errors: list[Exception] = []
+        attempted = 0
+        succeeded = 0
         if self._pgvector:
+            attempted += 1
             try:
                 self._pgvector.index_chunks(chunks, embeddings, original_filename)
+                succeeded += 1
             except Exception as exc:
                 errors.append(exc)
                 logger.warning("PGVector index failed: %s", type(exc).__name__)
         if self._mode == "DUAL_WRITE" and self._chroma:
+            attempted += 1
             try:
                 self._chroma.index_chunks(chunks, embeddings, original_filename)
+                succeeded += 1
             except Exception as exc:
                 errors.append(exc)
                 logger.warning("Chroma index failed: %s", type(exc).__name__)
-        if self._mode == "PG_ONLY" and errors:
-            raise errors[0]
+        if errors and (self._mode == "PG_ONLY" or succeeded == 0):
+            raise RuntimeError(
+                f"Indexing failed in all {attempted} configured vector stores."
+            ) from errors[0]
 
     def search(self, query_embedding: EmbeddingVector, top_k: int) -> list[RetrievedChunk]:
         if self._pgvector:
@@ -96,7 +104,11 @@ def initialize_retrieval_sync(
 ) -> RetrieverProtocol:
     global _instance
     mode = _sync_mode(settings.sync_mode)
-    pgvector = PGVectorRetriever(session_factory) if session_factory else None
+    pgvector = (
+        PGVectorRetriever(session_factory)
+        if session_factory and settings.database_url.startswith("postgresql")
+        else None
+    )
     chroma = None
     if mode == "DUAL_WRITE":
         chroma = ChromaRetriever(
@@ -110,6 +122,15 @@ def initialize_retrieval_sync(
 def get_sync_retriever() -> RetrieverProtocol:
     if _instance is None:
         raise RuntimeError("Retrieval sync not initialized.")
+    return _instance
+
+
+def initialize_mock_retriever() -> RetrieverProtocol:
+    """Initialize one in-memory store shared by uploads and mock queries."""
+    global _instance
+    from backend.rag.retriever import FakeRetriever
+
+    _instance = FakeRetriever()
     return _instance
 
 

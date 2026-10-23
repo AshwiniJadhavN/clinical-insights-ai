@@ -75,35 +75,14 @@ def get_safety_checker(settings: Settings = Depends(get_settings)) -> SafetyChec
 def get_query_service(settings: Settings = Depends(get_settings)) -> QueryService:
     safety_engine = SafetyDecisionEngine(confidence_threshold=settings.confidence_threshold)
     if settings.mock_llm:
-        from backend.rag.chunker import TextChunk
-        from backend.rag.embedder import FakeEmbedder
         from backend.rag.generator import FakeGenerator
-        from backend.rag.retriever import FakeRetriever
-
-        retriever = FakeRetriever()
-        retriever.index_chunks(
-            chunks=[
-                TextChunk(
-                    text=(
-                        "Demo evidence: the sample clinical note reports potassium "
-                        "at 3.2 mEq/L and recommends clinician review."
-                    ),
-                    chunk_index=0,
-                    start_char=0,
-                    end_char=107,
-                    doc_id="demo-doc-001",
-                )
-            ],
-            embeddings=[[0.1, 0.2, 0.3]],
-            original_filename="mock_clinical_note.txt",
-        )
         return QueryService(
             settings=settings,
-            embedder=FakeEmbedder(),
-            retriever=retriever,
+            embedder=_get_embedder_or_503(),
+            retriever=_get_retriever_or_503(settings),
             generator=FakeGenerator(),
             safety_engine=safety_engine,
-            audit_service=None,
+            audit_service=_get_audit_service_optional(),
         )
 
     try:

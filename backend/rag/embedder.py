@@ -107,6 +107,13 @@ def initialize_embedder(model_name: str = "all-MiniLM-L6-v2") -> EmbedderProtoco
     return _instance
 
 
+def initialize_fake_embedder() -> EmbedderProtocol:
+    """Initialize one process-wide deterministic embedder for local demo mode."""
+    global _instance
+    _instance = FakeEmbedder()
+    return _instance
+
+
 def get_embedder() -> EmbedderProtocol:
     if _instance is None:
         raise RuntimeError(

@@ -77,7 +77,13 @@ class SafetyDecisionEngine:
         confidence_level: str,
     ) -> SafetyDecision:
         findings: list[SafetyFinding] = []
-        findings.extend(self._citation_verifier.validate(citations=citations, chunks=chunks))
+        findings.extend(
+            self._citation_verifier.validate(
+                answer=answer,
+                citations=citations,
+                chunks=chunks,
+            )
+        )
         findings.extend(self._output_validator.validate(answer=answer, chunks=chunks))
         return self._policy_enforcer.decide(
             findings,

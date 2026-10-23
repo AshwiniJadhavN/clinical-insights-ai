@@ -17,9 +17,25 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Mapped
+from sqlalchemy.types import UserDefinedType
 
 from backend.database.session import Base
+
+
+class Vector384(UserDefinedType):
+    """PostgreSQL pgvector type with a text fallback for local SQLite tests."""
+
+    cache_ok = True
+
+    def get_col_spec(self, **kw) -> str:
+        return "VECTOR(384)"
+
+
+@compiles(Vector384, "sqlite")
+def _compile_vector_for_sqlite(type_, compiler, **kw) -> str:
+    return "TEXT"
 
 
 class Document(Base):
@@ -37,9 +53,7 @@ class Document(Base):
     error_message: Mapped[str | None] = Column(String(500), nullable=True)
     content_text: Mapped[str | None] = Column(Text, nullable=True)
     risk_level: Mapped[str] = Column(String(20), default="LOW", nullable=False)
-    # pgvector migration stores this as vector(384); SQLAlchemy keeps a string
-    # literal here to avoid a runtime dependency on pgvector-python.
-    embedding: Mapped[str | None] = Column(Text, nullable=True)
+    embedding: Mapped[str | None] = Column(Vector384(), nullable=True)
     uploaded_at: Mapped[datetime] = Column(
         DateTime(timezone=True),
         nullable=False,

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.config import Settings, get_settings
 from backend.testing_ai.models import (
@@ -64,7 +64,10 @@ def generate_tests(
     request: Request,
     service: TestingAIService = Depends(get_testing_ai_service),
 ) -> GenerateTestsResponse:
-    return service.generate_tests(body, request.app.routes)
+    try:
+        return service.generate_tests(body, request.app.routes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post(

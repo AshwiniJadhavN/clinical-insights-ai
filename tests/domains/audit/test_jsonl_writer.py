@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 from backend.audit.jsonl_writer import JsonlAuditWriter, verify_hash_chain
 
@@ -72,3 +73,18 @@ def test_jsonl_writer_ignores_invalid_existing_lines_when_appending(tmp_path) ->
     row = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
 
     assert row["previous_hash"] == "GENESIS"
+
+
+def test_jsonl_writer_preserves_hash_chain_during_concurrent_appends(tmp_path) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+
+    def append(index: int) -> None:
+        JsonlAuditWriter(audit_path).append(
+            {"timestamp": f"2026-07-06T00:00:{index:02d}Z", "audit_id": f"a-{index}"}
+        )
+
+    with ThreadPoolExecutor(max_workers=12) as executor:
+        list(executor.map(append, range(100)))
+
+    assert len(audit_path.read_text(encoding="utf-8").splitlines()) == 100
+    assert verify_hash_chain(audit_path) == (True, "Audit hash chain verified.")

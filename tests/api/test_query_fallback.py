@@ -22,3 +22,21 @@ def test_get_query_service_falls_back_to_fake_generator_when_llm_key_missing(mon
     service = query_api.get_query_service(settings)
 
     assert isinstance(service._generator, FakeGenerator)
+
+
+def test_mock_mode_reuses_initialized_retriever(monkeypatch):
+    settings = Settings(
+        database_url="sqlite:///./data/test.db",
+        mock_llm=True,
+    )
+    retriever = FakeRetriever()
+    embedder = FakeEmbedder()
+    monkeypatch.setattr(query_api, "_get_embedder_or_503", lambda: embedder)
+    monkeypatch.setattr(query_api, "_get_retriever_or_503", lambda _settings: retriever)
+
+    first = query_api.get_query_service(settings)
+    second = query_api.get_query_service(settings)
+
+    assert first._retriever is retriever
+    assert second._retriever is retriever
+    assert first._embedder is embedder

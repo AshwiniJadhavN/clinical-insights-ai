@@ -11,6 +11,7 @@ Log only: model name, citation count, token counts.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Protocol, runtime_checkable
 
 from anthropic import Anthropic
@@ -22,6 +23,7 @@ from backend.utils.logger import get_logger
 logger = get_logger(__name__)
 
 EXCERPT_LENGTH: int = 200
+_CITATION_MARKER = re.compile(r"(?<!\[)\[(\d+)\](?!\])")
 
 NO_CONTEXT_ANSWER: str = (
     "I cannot answer this question because no relevant clinical documents have been "
@@ -45,6 +47,7 @@ class Citation:
     chunk_index: int
     similarity_score: float
     excerpt: str
+    reference_id: int | None = None
 
 
 @dataclass
@@ -69,9 +72,21 @@ def _build_context(chunks: list[RetrievedChunk]) -> tuple[str, list[Citation]]:
         citations.append(Citation(
             doc_id=chunk.doc_id, original_filename=chunk.original_filename,
             chunk_index=chunk.chunk_index, similarity_score=chunk.similarity_score,
-            excerpt=chunk.text[:EXCERPT_LENGTH],
+            excerpt=chunk.text[:EXCERPT_LENGTH], reference_id=i,
         ))
     return "\n\n".join(lines), citations
+
+
+def _cited_sources(answer: str, available: list[Citation]) -> list[Citation]:
+    """Return only sources explicitly referenced by numeric markers in the answer."""
+    cited_indices = dict.fromkeys(
+        int(match.group(1)) for match in _CITATION_MARKER.finditer(answer)
+    )
+    return [
+        available[index - 1]
+        for index in cited_indices
+        if 1 <= index <= len(available)
+    ]
 
 
 class OpenAIGenerator:
@@ -104,7 +119,7 @@ class OpenAIGenerator:
             raise RuntimeError("LLM generation failed. Check provider configuration.") from exc
         logger.info("Generated: model=%s citations=%d prompt_tokens=%d completion_tokens=%d",
                     self._model, len(citations), prompt_tokens, completion_tokens)
-        return GeneratedAnswer(answer=answer, citations=citations, model_used=self._model,
+        return GeneratedAnswer(answer=answer, citations=_cited_sources(answer, citations), model_used=self._model,
                                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
 
@@ -136,7 +151,7 @@ class AnthropicGenerator:
             raise RuntimeError("LLM generation failed. Check provider configuration.") from exc
         logger.info("Generated: model=%s citations=%d prompt_tokens=%d completion_tokens=%d",
                     self._model, len(citations), prompt_tokens, completion_tokens)
-        return GeneratedAnswer(answer=answer, citations=citations, model_used=self._model,
+        return GeneratedAnswer(answer=answer, citations=_cited_sources(answer, citations), model_used=self._model,
                                prompt_tokens=prompt_tokens, completion_tokens=completion_tokens)
 
 
@@ -150,8 +165,11 @@ class FakeGenerator:
             return GeneratedAnswer(answer=NO_CONTEXT_ANSWER, citations=[], model_used=self._MODEL)
         _, citations = _build_context(chunks)
         return GeneratedAnswer(
-            answer=f"Based on the provided documents: Test answer for '{question[:50]}'.",
-            citations=citations, model_used=self._MODEL, prompt_tokens=100, completion_tokens=50,
+            answer=f"Based on the provided documents [1]: Test answer for '{question[:50]}'.",
+            citations=_cited_sources("[1]", citations),
+            model_used=self._MODEL,
+            prompt_tokens=100,
+            completion_tokens=50,
         )
 
 

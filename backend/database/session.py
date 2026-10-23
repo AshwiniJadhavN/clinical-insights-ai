@@ -14,8 +14,11 @@ Exposes:
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 
-from sqlalchemy import Engine, create_engine
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 
@@ -46,7 +49,20 @@ def init_db(database_url: str) -> None:
 
     import_module("backend.models")
 
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
     Base.metadata.create_all(engine)
+
+    if engine.dialect.name == "postgresql":
+        alembic_config = Config()
+        alembic_config.set_main_option(
+            "script_location",
+            str(Path(__file__).resolve().parents[2] / "alembic"),
+        )
+        alembic_config.attributes["connection"] = engine
+        command.upgrade(alembic_config, "head")
 
     _engine = engine
     _session_factory = session_factory

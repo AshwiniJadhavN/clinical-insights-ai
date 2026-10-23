@@ -14,7 +14,23 @@ def initialize_runtime(app: Any, settings: Settings, logger: Any) -> None:
 
     session_factory = _initialize_database(settings, logger)
     if settings.mock_llm:
-        logger.info("MOCK_LLM enabled — skipping production embedder/vector startup")
+        logger.info("MOCK_LLM enabled — using deterministic embedder and generator")
+        from backend.rag.embedder import initialize_fake_embedder
+
+        app.state.embedder = initialize_fake_embedder()
+        from backend.retrieval.sync import initialize_mock_retriever
+
+        app.state.retriever = initialize_mock_retriever()
+
+        from backend.services.sample_seed_service import seed_sample_documents
+
+        seed_sample_documents(
+            embedder=app.state.embedder,
+            retriever=app.state.retriever,
+            sample_dir=settings.sample_docs_directory,
+            chunk_size=settings.chunk_size,
+            chunk_overlap=settings.chunk_overlap,
+        )
         return
 
     from backend.rag.embedder import initialize_embedder

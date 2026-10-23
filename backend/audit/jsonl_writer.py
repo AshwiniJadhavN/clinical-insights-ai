@@ -10,7 +10,17 @@ from __future__ import annotations
 import json
 import hashlib
 from pathlib import Path
+import threading
 from typing import Any
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows uses the in-process lock below.
+    fcntl = None  # type: ignore[assignment]
+
+
+_PATH_LOCKS: dict[Path, threading.Lock] = {}
+_PATH_LOCKS_GUARD = threading.Lock()
 
 
 class JsonlAuditWriter:
@@ -19,12 +29,22 @@ class JsonlAuditWriter:
 
     def append(self, entry: dict[str, Any]) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        previous_hash = _last_record_hash(self._path)
-        chained_entry = dict(entry)
-        chained_entry["previous_hash"] = previous_hash
-        chained_entry["record_hash"] = _record_hash(chained_entry)
-        with self._path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(chained_entry, default=str) + "\n")
+        lock = _lock_for(self._path)
+        with lock, self._path.open("a+", encoding="utf-8") as handle:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                handle.seek(0)
+                previous_hash = _last_record_hash_from_lines(handle)
+                chained_entry = dict(entry)
+                chained_entry["previous_hash"] = previous_hash
+                chained_entry["record_hash"] = _record_hash(chained_entry)
+                handle.seek(0, 2)
+                handle.write(json.dumps(chained_entry, default=str) + "\n")
+                handle.flush()
+            finally:
+                if fcntl is not None:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def verify_hash_chain(path: Path) -> tuple[bool, str]:
@@ -53,17 +73,27 @@ def verify_hash_chain(path: Path) -> tuple[bool, str]:
 def _last_record_hash(path: Path) -> str:
     if not path.exists():
         return "GENESIS"
-    last_hash = "GENESIS"
     with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            if not line.strip():
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            last_hash = str(entry.get("record_hash", last_hash))
+        return _last_record_hash_from_lines(handle)
+
+
+def _last_record_hash_from_lines(lines) -> str:
+    last_hash = "GENESIS"
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        last_hash = str(entry.get("record_hash", last_hash))
     return last_hash
+
+
+def _lock_for(path: Path) -> threading.Lock:
+    resolved = path.resolve()
+    with _PATH_LOCKS_GUARD:
+        return _PATH_LOCKS.setdefault(resolved, threading.Lock())
 
 
 def _record_hash(entry: dict[str, Any]) -> str:

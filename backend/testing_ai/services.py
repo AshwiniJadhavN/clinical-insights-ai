@@ -92,7 +92,9 @@ class TestingAIService:
                 app_routes,
             )
             scenarios = scenario_response.scenarios[:5]
-        output_directory = self._project_root / request.output_directory
+        output_directory = self._resolve_generated_tests_directory(
+            request.output_directory
+        )
         generated_files = self._test_generator.generate(
             scenarios=scenarios,
             output_directory=output_directory,
@@ -104,6 +106,20 @@ class TestingAIService:
             advisory_message=HUMAN_REVIEW_DISCLAIMER,
             generated_at=datetime.now(timezone.utc),
         )
+
+    def _resolve_generated_tests_directory(self, requested: str) -> Path:
+        """Keep generated source files inside the configured draft-test area."""
+        requested_path = Path(requested)
+        if requested_path.is_absolute():
+            raise ValueError("Generated test output must use a project-relative path.")
+
+        output_directory = (self._project_root / requested_path).resolve()
+        allowed_directory = self._generated_tests_directory.resolve()
+        if not output_directory.is_relative_to(allowed_directory):
+            raise ValueError(
+                "Generated tests must remain inside the configured generated-tests directory."
+            )
+        return output_directory
 
     def map_risk(
         self,

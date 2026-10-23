@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from backend.rag.generator import Citation
 from backend.rag.retriever import RetrievedChunk
 from backend.safety.models import SafetyFinding
@@ -9,11 +11,16 @@ class CitationVerifier:
     def validate(
         self,
         *,
+        answer: str,
         citations: list[Citation],
         chunks: list[RetrievedChunk],
     ) -> list[SafetyFinding]:
         findings: list[SafetyFinding] = []
-        if not citations:
+        references = {
+            int(value)
+            for value in re.findall(r"(?<!\[)\[(\d+)\](?!\])", answer)
+        }
+        if not references:
             findings.append(
                 SafetyFinding(
                     code="MISSING_CITATIONS",
@@ -25,6 +32,44 @@ class CitationVerifier:
                 )
             )
             return findings
+
+        invalid_references = sorted(
+            reference for reference in references if not 1 <= reference <= len(chunks)
+        )
+        if invalid_references:
+            findings.append(
+                SafetyFinding(
+                    code="FABRICATED_CITATION",
+                    requirement_id="SR-002",
+                    hazard_id="HAZ-002",
+                    message="Generated output referenced evidence that was not retrieved.",
+                    severity="critical",
+                    control_id="RC-002",
+                )
+            )
+
+        cited_by_reference = {
+            citation.reference_id: citation
+            for citation in citations
+            if citation.reference_id is not None
+        }
+        for reference in references - set(invalid_references):
+            citation = cited_by_reference.get(reference)
+            expected = chunks[reference - 1]
+            if citation is None or (
+                citation.doc_id,
+                citation.chunk_index,
+            ) != (expected.doc_id, expected.chunk_index):
+                findings.append(
+                    SafetyFinding(
+                        code="CITATION_MISMATCH",
+                        requirement_id="SR-002",
+                        hazard_id="HAZ-008",
+                        message="Generated citation marker does not match its retrieved source.",
+                        severity="high",
+                        control_id="RC-002",
+                    )
+                )
 
         valid_sources = {(chunk.doc_id, chunk.chunk_index): chunk for chunk in chunks}
         for citation in citations:

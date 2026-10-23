@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from backend.testing_ai.models import FailureAnalysisRequest, GenerateTestsRequest, RiskMapRequest, ScenarioGenerationRequest
 from backend.testing_ai.services import TestingAIService
 
@@ -51,6 +53,37 @@ def test_generate_tests_creates_non_overwriting_draft_files(tmp_path: Path) -> N
     assert len(first_response.generated_files) == 1
     assert len(second_response.generated_files) == 1
     assert first_response.generated_files[0].path != second_response.generated_files[0].path
+
+
+@pytest.mark.parametrize("output_directory", ["../outside", "/tmp/outside"])
+def test_generate_tests_rejects_output_outside_generated_directory(
+    tmp_path: Path,
+    output_directory: str,
+) -> None:
+    service = _service(tmp_path)
+
+    with pytest.raises(ValueError, match="generated-test|project-relative"):
+        service.generate_tests(
+            GenerateTestsRequest(output_directory=output_directory),
+            app_routes=[],
+        )
+
+
+def test_generate_tests_sanitizes_python_identifiers(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    scenario = service.generate_scenarios(
+        ScenarioGenerationRequest(max_scenarios=1), app_routes=[]
+    ).scenarios[0]
+    scenario.scenario_id = "unsafe-id\nraise RuntimeError"
+
+    response = service.generate_tests(
+        GenerateTestsRequest(scenarios=[scenario], file_prefix="../draft"),
+        app_routes=[],
+    )
+
+    generated = Path(response.generated_files[0].path)
+    assert generated.parent == tmp_path / "tests/generated"
+    assert "def test_unsafe_id_raise_runtimeerror()" in generated.read_text(encoding="utf-8")
 
 
 def test_analyze_failure_returns_structured_json(tmp_path: Path) -> None:

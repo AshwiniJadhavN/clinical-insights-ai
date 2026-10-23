@@ -36,17 +36,19 @@ class TestGenerator:
         return generated_files
 
     def _build_unique_filename(self, output_directory: Path, file_prefix: str, title: str) -> Path:
-        stem = f"{file_prefix}_{_slugify(title)}_template.py"
+        safe_prefix = _slugify(file_prefix) or "draft"
+        safe_title = _slugify(title) or "scenario"
+        stem = f"{safe_prefix}_{safe_title}_template.py"
         candidate = output_directory / stem
         counter = 1
         while candidate.exists():
-            candidate = output_directory / f"{file_prefix}_{_slugify(title)}_{counter}_template.py"
+            candidate = output_directory / f"{safe_prefix}_{safe_title}_{counter}_template.py"
             counter += 1
         return candidate
 
     def _build_file_content(self, scenario: ScenarioDraft) -> str:
         endpoint_hint = scenario.related_endpoints[0] if scenario.related_endpoints else "/query"
-        test_name = f"test_{scenario.scenario_id}"
+        test_name = f"test_{_slugify(scenario.scenario_id) or 'scenario'}"
         evidence_lines = "\n".join(
             f"    # Collect evidence: {evidence_item}"
             for evidence_item in scenario.evidence_to_collect

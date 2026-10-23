@@ -36,6 +36,31 @@ def test_synced_retriever_requires_pgvector_in_pg_only() -> None:
         SyncedRetriever(mode="PG_ONLY", pgvector=None, chroma=_Store(results=[]))
 
 
+def test_synced_retriever_raises_when_every_index_backend_fails() -> None:
+    retriever = SyncedRetriever(
+        mode="DUAL_WRITE",
+        pgvector=_Store(results=[], fail_index=True),
+        chroma=_Store(results=[], fail_index=True),
+    )
+
+    with pytest.raises(RuntimeError, match="all 2 configured vector stores"):
+        retriever.index_chunks(
+            [_text_chunk()],
+            [[0.1]],
+            "doc.txt",
+        )
+
+
+def test_synced_retriever_accepts_one_successful_index_backend() -> None:
+    pg = _Store(results=[], fail_index=True)
+    chroma = _Store(results=[])
+    retriever = SyncedRetriever(mode="DUAL_WRITE", pgvector=pg, chroma=chroma)
+
+    retriever.index_chunks([_text_chunk()], [[0.1]], "doc.txt")
+
+    assert chroma.indexed is True
+
+
 def _chunk(doc_id: str, score: float) -> RetrievedChunk:
     return RetrievedChunk(
         text="text",
@@ -46,16 +71,34 @@ def _chunk(doc_id: str, score: float) -> RetrievedChunk:
     )
 
 
+def _text_chunk() -> TextChunk:
+    return TextChunk(
+        text="clinical evidence " * 4,
+        chunk_index=0,
+        start_char=0,
+        end_char=72,
+        doc_id="doc",
+    )
+
+
 class _Store:
-    def __init__(self, results: list[RetrievedChunk], fail_search: bool = False) -> None:
+    def __init__(
+        self,
+        results: list[RetrievedChunk],
+        fail_search: bool = False,
+        fail_index: bool = False,
+    ) -> None:
         self.results = results
         self.fail_search = fail_search
+        self.fail_index = fail_index
         self.indexed = False
 
     def count(self) -> int:
         return len(self.results)
 
     def index_chunks(self, chunks, embeddings, original_filename: str) -> None:
+        if self.fail_index:
+            raise RuntimeError("index failed")
         self.indexed = True
 
     def search(self, query_embedding, top_k: int) -> list[RetrievedChunk]:

@@ -15,6 +15,7 @@ RUN pip install --upgrade pip==24.0 \
     && pip install -r requirements.txt
 
 COPY backend ./backend
+COPY alembic ./alembic
 COPY config ./config
 COPY data/.gitkeep ./data/.gitkeep
 COPY data/sample_docs ./data/sample_docs
